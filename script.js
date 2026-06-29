@@ -1,3 +1,26 @@
+// ====== GERENCIADOR DE FAVORITOS (LOCALSTORAGE) ======
+const FavoritesManager = {
+    get() {
+        return JSON.parse(localStorage.getItem('pobre_descontao_favs')) || [];
+    },
+    toggle(gameId) {
+        let favs = this.get();
+        if (favs.includes(gameId)) {
+            favs = favs.filter(id => id !== gameId);
+        } else {
+            favs.push(gameId);
+            this.requestNotificationPermission();
+        }
+        localStorage.setItem('pobre_descontao_favs', JSON.stringify(favs));
+        return favs;
+    },
+    requestNotificationPermission() {
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+    }
+};
+
 // ====== ESTADO GLOBAL ======
 let allGames = [];
 let currentPlatform = 'all';
@@ -10,30 +33,28 @@ async function fetchGameDeals() {
     grid.innerHTML = '<div class="loading">Carregando promoções reais em R$...</div>';
     
     try {
-        // Aponta diretamente para a Serverless Function que criamos na Vercel
-        // Quando estiver testando localmente use '/api/games', em produção use a URL da Vercel
         const response = await fetch('/api/games');
-        allGames = await response.json();
+        const data = await response.json();
         
-        // Mapeia o formato do banco de dados para as variáveis do Front-end
-        allGames = allGames.map(game => ({
-            id: game.id.toString(),
-            title: game.title,
-            platform: game.platform,
-            priceOld: parseFloat(game.price_old),
-            priceCurrent: parseFloat(game.price_current),
-            discount: game.discount,
-            thumb: game.thumb
+        // Mapeia garantindo tratamento de erros se algum ID ou preço vier nulo
+        allGames = data.map(game => ({
+            id: game.id ? game.id.toString() : Math.random().toString(),
+            title: game.title || 'Jogo Sem Nome',
+            platform: game.platform || 'steam',
+            priceOld: parseFloat(game.price_old) || 0,
+            priceCurrent: parseFloat(game.price_current) || 0,
+            discount: parseInt(game.discount) || 0,
+            thumb: game.thumb || 'https://via.placeholder.com/300x170?text=PobreDescontao'
         }));
 
         applyFiltersAndRender();
     } catch (error) {
         console.error("Erro ao conectar na API PobreDescontão:", error);
-        grid.innerHTML = '<div class="error">Erro ao carregar os dados reais. Verifique o banco Supabase.</div>';
+        grid.innerHTML = '<div class="error">Erro ao carregar os dados reais da API da Vercel.</div>';
     }
 }
 
-// ====== SEUS FILTROS E RENDER QUE VOCÊ JÁ TINHA ======
+// ====== FILTROS E ORDENAÇÃO ======
 function applyFiltersAndRender() {
     let filtered = [...allGames];
     
@@ -54,33 +75,66 @@ function applyFiltersAndRender() {
     renderGames(filtered);
 }
 
+// ====== RENDERIZADOR DE CARDS ======
 function renderGames(gamesList) {
     const grid = document.getElementById('gamesGrid');
+    const favs = FavoritesManager.get();
+
     if (gamesList.length === 0) {
         grid.innerHTML = '<div class="no-results">Nenhum jogo encontrado.</div>';
         return;
     }
     
-    grid.innerHTML = gamesList.map(game => `
-        <div class="game-card" data-platform="${game.platform}">
-            <div class="discount-badge">-${game.discount}%</div>
-            <img src="${game.thumb}" alt="${game.title}" class="game-thumb" onerror="this.src='https://via.placeholder.com/300x170?text=PobreDescontao'">
-            <div class="game-info">
-                <h3 class="game-title">${game.title}</h3>
-                <div class="platform-indicator" style="font-size:0.75rem; color:var(--texto-escuro); font-weight:bold; text-transform:uppercase; margin-bottom:8px;">
-                    ${game.platform}
+    grid.innerHTML = gamesList.map(game => {
+        const isFav = favs.includes(game.id);
+        return `
+            <div class="game-card" data-platform="${game.platform}">
+                <div class="discount-badge">-${game.discount}%</div>
+                <img src="${game.thumb}" alt="${game.title}" class="game-thumb" onerror="this.src='https://via.placeholder.com/300x170?text=PobreDescontao'">
+                <div class="game-info">
+                    <h3 class="game-title">${game.title}</h3>
+                    <div class="platform-indicator" style="font-size:0.75rem; color:var(--texto-escuro); font-weight:bold; text-transform:uppercase; margin-bottom:8px;">
+                        ${game.platform}
+                    </div>
+                    <div class="price-row">
+                        <span class="price-old">R$ ${game.priceOld.toFixed(2)}</span>
+                        <span class="price-current" style="color:var(--cor-desconto); font-size:1.1rem;">R$ ${game.priceCurrent.toFixed(2)}</span>
+                    </div>
+                    <button class="track-btn ${isFav ? 'active' : ''}" data-id="${game.id}" data-title="${game.title}">
+                        ${isFav ? 'Acompanhando' : 'Acompanhar'}
+                    </button>
                 </div>
-                <div class="price-row">
-                    <span class="price-old">R$ ${game.priceOld.toFixed(2)}</span>
-                    <span class="price-current" style="color:var(--cor-desconto); font-size:1.1rem;">R$ ${game.priceCurrent.toFixed(2)}</span>
-                </div>
-                <button class="track-btn" data-id="${game.id}">Acompanhar</button>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
+
+    // ATIVA OS BOTÕES APÓS GERAR O HTML
+    initTrackButtons();
 }
 
-// Inicializadores dos eventos do input e botões permanecem os mesmos abaixo...
+// ====== INTERAÇÃO DOS BOTÕES ======
+function initTrackButtons() {
+    document.querySelectorAll('.track-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const id = btn.dataset.id;
+            const title = btn.dataset.title;
+            const updatedFavs = FavoritesManager.toggle(id);
+            
+            if (updatedFavs.includes(id)) {
+                btn.classList.add('active');
+                btn.innerText = 'Acompanhando';
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification("PobreDescontão", { body: `Você começou a acompanhar: ${title}` });
+                }
+            } else {
+                btn.classList.remove('active');
+                btn.innerText = 'Acompanhar';
+            }
+        });
+    });
+}
+
+// ====== INICIALIZAÇÃO ======
 document.addEventListener('DOMContentLoaded', () => {
     fetchGameDeals();
     
