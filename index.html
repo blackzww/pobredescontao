@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PobreDescontão | Promoções de Jogos</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="logo">Pobre<span>Descontão</span></div>
+        <div class="search-container">
+            <input type="text" id="searchInput" placeholder="Pesquisar jogo...">
+        </div>
+    </header>
+
+    <main>
+        <section class="filters-section">
+            <div class="platform-filters">
+                <button class="filter-btn active" data-platform="all">Todos</button>
+                <button class="filter-btn" data-platform="steam">Steam</button>
+                <button class="filter-btn" data-platform="xbox">Xbox</button>
+                <button class="filter-btn" data-platform="psn">PSN</button>
+            </div>
+            <div class="sort-filters">
+                <select id="sortSelect">
+                    <option value="recent">Mais recentes</option>
+                    <option value="discount">Maior desconto</option>
+                    <option value="price">Menor preço</option>
+                </select>
+            </div>
+        </section>
+
+        <section class="games-grid" id="gamesGrid">
+            <!-- Os cards de jogos serão injetados aqui via JS -->
+        </section>
+    </main>
+
+    <script src="script.js" type="module"></script>
+</body>
+  </html>
+  
