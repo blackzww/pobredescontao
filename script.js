@@ -27,32 +27,46 @@ let currentPlatform = 'all';
 let currentSort = 'discount';
 let searchQuery = '';
 
-// ====== BUSCA DE DADOS REAL (API CHEAPSHARK) ======
+// ====== BUSCA DE DADOS REAL COM AJUSTE DE MOEDA E PLATAFORMAS ======
 async function fetchGameDeals() {
     const grid = document.getElementById('gamesGrid');
     grid.innerHTML = '<div class="loading">Carregando promoções em tempo real...</div>';
     
     try {
-        // Busca as 60 melhores ofertas ativas na Steam usando a API do CheapShark
-        // ID 1 no CheapShark representa a loja da Steam
-        const response = await fetch('https://www.cheapshark.com/api/1.0/deals?storeID=1&pageSize=60');
+        // Buscando as ofertas da API
+        const response = await fetch('https://www.cheapshark.com/api/1.0/deals?pageSize=60');
         const data = await response.json();
         
-        // Mapeia e padroniza os dados para o formato do PobreDescontão
-        allGames = data.map(item => ({
-            id: item.gameID,
-            title: item.title,
-            platform: 'steam', // Inicialmente mapeado como Steam
-            priceOld: parseFloat(item.normalPrice),
-            priceCurrent: parseFloat(item.salePrice),
-            discount: Math.round(parseFloat(item.savings)),
-            thumb: item.thumb
-        }));
+        // Fator de ajuste estimado para converter o preço base da API para a realidade do mercado BR (Regionalizado)
+        const FATOR_CONVERSAO_BR = 3.5; 
+
+        // Lista de plataformas para distribuir os jogos no catálogo e testar os filtros
+        const plataformas = ['steam', 'xbox', 'psn'];
+        
+        allGames = data.map((item, index) => {
+            // Calcula um preço aproximado em Reais simulando o preço regionalizado brasileiro
+            let precoAntigoBR = parseFloat(item.normalPrice) * FATOR_CONVERSAO_BR;
+            let precoAtualBR = parseFloat(item.salePrice) * FATOR_CONVERSAO_BR;
+            
+            // Distribui os jogos entre Steam, Xbox e PSN para que seus botões de filtro funcionem
+            // (Na versão final com banco de dados, cada um virá com sua plataforma real)
+            let plataformaDefinida = plataformas[index % plataformas.length];
+
+            return {
+                id: item.gameID,
+                title: item.title,
+                platform: plataformaDefinida, 
+                priceOld: precoAntigoBR,
+                priceCurrent: precoAtualBR,
+                discount: Math.round(parseFloat(item.savings)),
+                thumb: item.thumb
+            };
+        });
         
         applyFiltersAndRender();
     } catch (error) {
         console.error("Erro ao buscar dados:", error);
-        grid.innerHTML = '<div class="error">Erro ao carregar dados. Verifique sua conexão.</div>';
+        grid.innerHTML = '<div class="error">Erro ao carregar dados em tempo real.</div>';
     }
 }
 
