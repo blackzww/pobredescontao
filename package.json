@@ -1,0 +1,8 @@
+{
+  "name": "pobre-descontao",
+  "version": "1.0.0",
+  "main": "api/games.js",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.43.0"
+  }
+}
