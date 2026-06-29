@@ -1,16 +1,8 @@
-// Dados limpos de segurança em R$ para o seu front-end nunca ficar em branco
-const jogosFallbackBR = [
-    { id: 1, title: "Resident Evil 4 Remake", platform: "steam", price_old: 169.00, price_current: 99.90, discount: 41, thumb: "https://cdn.cloudflare.steamstatic.com/steam/apps/2050650/header.jpg" },
-    { id: 2, title: "Elden Ring", platform: "psn", price_old: 299.90, price_current: 179.94, discount: 40, thumb: "https://cdn.cloudflare.steamstatic.com/steam/apps/1245620/header.jpg" },
-    { id: 3, title: "Cyberpunk 2077", platform: "steam", price_old: 199.90, price_current: 99.95, discount: 50, thumb: "https://cdn.cloudflare.steamstatic.com/steam/apps/1091500/header.jpg" },
-    { id: 4, title: "Forza Horizon 5", platform: "xbox", price_old: 249.00, price_current: 99.60, discount: 60, thumb: "https://cdn.cloudflare.steamstatic.com/steam/apps/1551360/header.jpg" }
-];
-
 export default async function handler(req, res) {
-    // Configura os cabeçalhos de CORS para o navegador liberar o acesso
+    // Configuração de CORS para o seu celular/navegador ler os dados sem travar
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
     if (req.method === 'OPTIONS') {
@@ -19,29 +11,43 @@ export default async function handler(req, res) {
     }
 
     try {
-        // Tenta carregar o Supabase de forma dinâmica para evitar travar a execução se o pacote sumir
-        const { createClient } = await import('@supabase/supabase-js');
-        
-        const SUPABASE_URL = process.env.SUPABASE_URL;
-        const SUPABASE_KEY = process.env.SUPABASE_KEY;
+        // 1. Busca a cotação oficial e atualizada do Dólar (USD para BRL) da AwesomeAPI
+        const coinResponse = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL');
+        const coinData = await coinResponse.json();
+        const cotacaoDolar = parseFloat(coinData.USDBRL.bid);
 
-        if (SUPABASE_URL && SUPABASE_KEY && req.method === 'GET') {
-            const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-            const { data, error } = await supabase
-                .from('jogos_promocao')
-                .select('*')
-                .order('discount', { ascending: false });
+        // 2. Busca as promoções reais em tempo real da API do CheapShark (traz as 40 melhores do momento)
+        const response = await fetch('https://www.cheapshark.com/api/1.0/deals?pageSize=40');
+        const data = await response.json();
 
-            if (!error && data && data.length > 0) {
-                return res.status(200).json(data);
-            }
-        }
-        
-        // Se cair aqui (banco vazio ou sem chaves), entrega os jogos em R$ padrão
-        return res.status(200).json(jogosFallbackBR);
+        // 3. Distribuição de plataformas para fazer seus filtros funcionarem na interface do celular
+        const plataformas = ['steam', 'xbox', 'psn'];
 
-    } catch (e) {
-        // Se der erro de módulo ou qualquer outra coisa na Vercel, joga o fallback na tela!
-        return res.status(200).json(jogosFallbackBR);
+        // 4. Converte os valores base dos jogos com base no câmbio real do exato minuto da requisição
+        const jogosReaisBR = data.map((item, index) => {
+            const precoAntigoConvertido = parseFloat(item.normalPrice) * cotacaoDolar;
+            const precoAtualConvertido = parseFloat(item.salePrice) * cotacaoDolar;
+            const descontoReal = Math.round(parseFloat(item.savings));
+
+            // Identifica se é Steam pelo ID da loja deles (1), se não, distribui entre os consoles para teste dos filtros
+            const plataformaDefinida = item.storeID === '1' ? 'steam' : plataformas[index % plataformas.length];
+
+            return {
+                id: item.gameID,
+                title: item.title,
+                platform: plataformaDefinida,
+                price_old: precoAntigoConvertido,
+                price_current: precoAtualConvertido,
+                discount: descontoReal,
+                thumb: item.thumb
+            };
+        });
+
+        // Retorna a lista com os jogos reais e a conversão de moeda exata
+        return res.status(200).json(jogosReaisBR);
+
+    } catch (error) {
+        console.error("Erro interno na API da Vercel:", error);
+        return res.status(500).json({ error: "Erro ao buscar ou converter dados em tempo real." });
     }
 }
